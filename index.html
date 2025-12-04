@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>./ DODGE FULLSCREEN</title>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet" />
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Press Start 2P', monospace;
+      height: 100vh;
+      overflow: hidden;
+      background: #0a0a0a;
+      color: #00ff41;
+      position: relative;
+    }
+
+    #bg-grid {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%;
+      height: 100%;
+      font-size: 12px;
+      line-height: 16px;
+      opacity: 0.3;
+      pointer-events: none;
+      z-index: 1;
+      white-space: pre;
+      font-family: 'Courier New', monospace;
+      user-select: none;
+    }
+
+    #menu {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      text-align: center;
+      z-index: 10;
+    }
+
+    h1 {
+      font-size: 32px;
+      margin-bottom: 40px;
+      text-shadow: 0 0 10px #00ff41;
+      animation: glow 2s ease-in-out infinite alternate;
+    }
+
+    @keyframes glow {
+      from { text-shadow: 0 0 10px #00ff41; }
+      to { text-shadow: 0 0 20px #00ff41, 0 0 30px #00ff41; }
+    }
+
+    .btn {
+      background: #00ff41;
+      color: #000;
+      border: none;
+      padding: 18px 36px;
+      font-family: 'Press Start 2P', monospace;
+      font-size: 16px;
+      cursor: pointer;
+      margin: 12px;
+      box-shadow: 0 0 20px rgba(0, 255, 65, 0.5);
+      transition: all 0.3s;
+      user-select: none;
+    }
+
+    .btn:hover {
+      background: #00cc33;
+      box-shadow: 0 0 30px rgba(0, 255, 65, 0.8);
+      transform: scale(1.05);
+    }
+
+    #gameCanvas {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100vw;
+      height: 100vh;
+      image-rendering: pixelated;
+      background: rgba(0, 0, 0, 0.9);
+      display: none;
+      z-index: 5;
+    }
+
+    #ui {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      z-index: 15;
+      font-size: 18px;
+      text-shadow: 0 0 5px #00ff41;
+      user-select: none;
+      opacity: 0; 
+      transition: opacity 0.3s;
+    }
+
+    #gameOver {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0, 0, 0, 0.95);
+      border: 4px solid #ff0040;
+      padding: 50px;
+      text-align: center;
+      display: none;
+      z-index: 20;
+      box-shadow: 0 0 40px rgba(255, 0, 64, 0.5);
+      user-select: none;
+    }
+
+    #finalScore {
+      font-size: 28px;
+      margin: 25px 0;
+      color: #ff0040;
+      text-shadow: 0 0 10px #ff0040;
+    }
+  </style>
+</head>
+<body>
+  <div id="bg-grid"></div>
+
+  <div id="ui">
+    <span id="time">TIME: 60s</span> | 
+    <span id="score">SCORE: 0</span>
+  </div>
+
+  <div id="menu">
+    <h1>./ DODGE</h1>
+    <p>Dodge X enemies!</p>
+    <p>Collect + for +10 points!</p>
+    <p>Survive 60 seconds!</p>
+    <br />
+    <button class="btn" id="startBtn">./ START GAME</button>
+  </div>
+
+  <canvas id="gameCanvas"></canvas>
+
+  <div id="gameOver">
+    <h2>./ GAME OVER</h2>
+    <div id="finalScore">FINAL SCORE: 0</div>
+    <button class="btn" id="restartBtn">./ RESTART</button>
+    <br /><br />
+    <button class="btn" id="menuBtn" style="background: #666;">./ MAIN MENU</button>
+  </div>
+
+  <script>
+    function createBgGrid() {
+      const grid = document.getElementById('bg-grid');
+      let content = '';
+      const cols = Math.floor(window.innerWidth / 14);
+      const rows = Math.floor(window.innerHeight / 16);
+
+      for (let i = 0; i < rows; i++) {
+        for (let j = 0; j < cols; j++) {
+          content += './';
+        }
+        content += '\n';
+      }
+      grid.textContent = content;
+    }
+
+    createBgGrid();
+    window.addEventListener('resize', createBgGrid);
+
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const ui = document.getElementById('ui');
+    
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+
+    ctx.imageSmoothingEnabled = false;
+
+    let gameRunning = false;
+    let player = { x: window.innerWidth / 2, y: window.innerHeight - 100, size: 28 };
+    let enemies = [];
+    let collectibles = [];
+    let score = 0;
+    let startTime = 0;
+    const GAME_TIME = 60000; 
+
+    const keys = {};
+    document.addEventListener('keydown', (e) => {
+      keys[e.code] = true;
+      if (e.code === 'Space' && !gameRunning) e.preventDefault();
+    });
+    document.addEventListener('keyup', (e) => {
+      keys[e.code] = false;
+    });
+
+    function createEnemy() {
+      return {
+        x: Math.random() * (canvas.width - 28) + 14,
+        y: -28,
+        size: 28,
+        speed: 2 + Math.random() * 2.5,
+      };
+    }
+
+    function createCollectible() {
+      return {
+        x: Math.random() * (canvas.width - 28) + 14,
+        y: -28,
+        size: 28,
+        speed: 1.5 + Math.random() * 1.5,
+      };
+    }
+
+    function collided(obj1, obj2) {
+      const dx = obj1.x - obj2.x;
+      const dy = obj1.y - obj2.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      return dist < (obj1.size / 2 + obj2.size / 2) * 0.9;
+    }
+
+    function update() {
+      if (!gameRunning) return;
+
+      const speed = 8;
+      if (keys['ArrowLeft'] || keys['KeyA']) player.x -= speed;
+      if (keys['ArrowRight'] || keys['KeyD']) player.x += speed;
+      if (keys['ArrowUp'] || keys['KeyW']) player.y -= speed;
+      if (keys['ArrowDown'] || keys['KeyS']) player.y += speed;
+
+      player.x = Math.max(player.size/2, Math.min(canvas.width - player.size/2, player.x));
+      player.y = Math.max(player.size/2, Math.min(canvas.height - player.size/2, player.y));
+
+      enemies.forEach(enemy => enemy.y += enemy.speed);
+      collectibles.forEach(c => c.y += c.speed);
+
+      enemies = enemies.filter(enemy => enemy.y < canvas.height + 30);
+      collectibles = collectibles.filter(c => c.y < canvas.height + 30);
+
+      if (Math.random() < 0.06) enemies.push(createEnemy());
+      if (Math.random() < 0.02) collectibles.push(createCollectible());
+
+      for (let i = 0; i < enemies.length; i++) {
+        if (collided(player, enemies[i])) {
+          gameOver();
+          return;
+        }
+      }
+
+      for (let i = collectibles.length - 1; i >= 0; i--) {
+        if (collided(player, collectibles[i])) {
+          score += 10;
+          collectibles.splice(i, 1);
+        }
+      }
+
+      const elapsed = Date.now() - startTime;
+      document.getElementById('score').textContent = `SCORE: ${score}`;
+      const timeLeft = Math.max(0, GAME_TIME - elapsed);
+      document.getElementById('time').textContent = `TIME: ${Math.floor(timeLeft / 1000)}s`;
+
+      // Win condition
+      if (elapsed >= GAME_TIME) {
+        gameWin();
+      }
+    }
+
+    // Render game - ALL SAME FONT SIZE 26px
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Player: green (./) - 26px font
+      ctx.font = 'bold 26px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#00ff41';
+      ctx.shadowColor = '#00ff41';
+      ctx.shadowBlur = 12;
+      ctx.fillText('./', player.x, player.y);
+      ctx.shadowBlur = 0;
+
+      // Enemies: red X - SAME 26px font
+      enemies.forEach(enemy => {
+        ctx.fillStyle = '#ff0040';
+        ctx.shadowColor = '#ff0040';
+        ctx.shadowBlur = 12;
+        ctx.font = 'bold 26px monospace';
+        ctx.fillText('X', enemy.x, enemy.y);
+        ctx.shadowBlur = 0;
+      });
+
+      // Collectibles: purple + - SAME 26px font
+      collectibles.forEach(c => {
+        ctx.fillStyle = '#bb00ff';
+        ctx.shadowColor = '#bb00ff';
+        ctx.shadowBlur = 12;
+        ctx.font = 'bold 26px monospace';
+        ctx.fillText('+', c.x, c.y);
+        ctx.shadowBlur = 0;
+      });
+    }
+
+    // Main game loop
+    function gameLoop() {
+      update();
+      draw();
+      requestAnimationFrame(gameLoop);
+    }
+
+    // Start game - SHOW UI
+    function startGame() {
+      gameRunning = true;
+      startTime = Date.now();
+      score = 0;
+      player.x = canvas.width / 2;
+      player.y = canvas.height - 100;
+      enemies = [];
+      collectibles = [];
+
+      document.getElementById('menu').style.display = 'none';
+      document.getElementById('gameOver').style.display = 'none';
+      canvas.style.display = 'block';
+      ui.style.opacity = '1'; // SHOW UI
+      document.getElementById('score').textContent = 'SCORE: 0';
+      document.getElementById('time').textContent = 'TIME: 60s';
+    }
+
+    // Return to menu - HIDE UI
+    function showMenu() {
+      canvas.style.display = 'none';
+      document.getElementById('gameOver').style.display = 'none';
+      document.getElementById('menu').style.display = 'block';
+      ui.style.opacity = '0'; // HIDE UI
+    }
+
+    // Game over
+    function gameOver() {
+      gameRunning = false;
+      document.getElementById('finalScore').textContent = `FINAL SCORE: ${score}`;
+      showGameOver('#ff0040', 'rgba(255, 0, 64, 0.5)', './ GAME OVER');
+    }
+
+    // Game win
+    function gameWin() {
+      gameRunning = false;
+      document.getElementById('finalScore').textContent = `FINAL SCORE: ${score}`;
+      showGameOver('#00ff41', 'rgba(0, 255, 65, 0.5)', './ YOU WIN!');
+    }
+
+    // Show game over screen
+    function showGameOver(borderColor, shadowColor, title) {
+      const go = document.getElementById('gameOver');
+      go.style.borderColor = borderColor;
+      go.style.boxShadow = `0 0 40px ${shadowColor}`;
+      go.innerHTML = `
+        <h2>${title}</h2>
+        <div id="finalScore">FINAL SCORE: ${score}</div>
+        <button class="btn" id="restartBtn">./ RESTART</button><br><br>
+        <button class="btn" id="menuBtn" style="background: #666;">./ MAIN MENU</button>
+      `;
+      go.style.display = 'block';
+      bindGameOverButtons();
+    }
+
+    // Button event handlers
+    function bindGameOverButtons() {
+      document.getElementById('restartBtn').onclick = () => {
+        document.getElementById('gameOver').style.display = 'none';
+        startGame();
+      };
+      document.getElementById('menuBtn').onclick = () => {
+        document.getElementById('gameOver').style.display = 'none';
+        showMenu();
+      };
+    }
+
+    document.getElementById('startBtn').onclick = startGame;
+
+    // Start the game loop
+    gameLoop();
+  </script>
+</body>
+</html>
