@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>./ GRAD DODGE </title>
+  <title>./ GRAD DODGE v3</title>
   <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet" />
   <style>
     * {
@@ -27,12 +27,19 @@
       height: 100%;
       font-size: 12px;
       line-height: 16px;
-      opacity: 0.3;
+      opacity: 0.25;
       pointer-events: none;
       z-index: 1;
       white-space: pre;
       font-family: 'Courier New', monospace;
       user-select: none;
+      color: #00ff41;
+      animation: gridGlow 3s ease-in-out infinite alternate;
+    }
+
+    @keyframes gridGlow {
+      0% { opacity: 0.15; color: #00aa28; }
+      100% { opacity: 0.35; color: #00ff41; }
     }
 
     #menu {
@@ -103,16 +110,21 @@
       top: 20px;
       left: 20px;
       z-index: 15;
-      font-size: 18px;
+      font-size: 14px;
       text-shadow: 0 0 5px #00ff41;
       user-select: none;
       opacity: 0;
       transition: opacity 0.3s;
+      line-height: 1.4;
     }
 
     #ui span {
-      margin-right: 16px;
+      margin-right: 12px;
+      display: block;
     }
+
+    .status-on { color: #00ff41; text-shadow: 0 0 8px #00ff41; }
+    .status-off { color: #666; }
 
     #gameOver {
       position: fixed;
@@ -160,20 +172,23 @@
   <div id="bg-grid"></div>
 
   <div id="ui">
-    <span id="time">TIME: 60s</span> |
-    <span id="score">SCORE: 0</span> |
-    <span id="shield">SHIELD: OFF</span> |
-    <span id="slowmo">SLOWMO: OFF</span> |
+    <span id="time">TIME: 60s</span>
+    <span id="score">SCORE: 0</span>
+    <span id="shield"><span class="status-off">SHIELD: OFF</span></span>
+    <span id="slowmo"><span class="status-off">SLOWMO: OFF</span></span>
+    <span id="mult"><span class="status-off">X2: OFF</span></span>
+    <span id="magnet"><span class="status-off">+M+: OFF</span></span>
     <span id="diffLabel">DIFF: EASY</span>
   </div>
 
   <div id="menu">
-    <h1>./ DODGE</h1>
+    <h1>./ GRAD DODGE v3</h1>
     <p>– Dodge X enemies!</p>
     <p>– Collect + for +10 points!</p>
     <p>– Collect * for SHIELD (1 hit)!</p>
     <p>– Collect S to SLOW TIME!</p>
-    <p>– Survive 60 seconds!</p>
+    <p>– Collect X2 for SCORE x2!</p>
+    <p>– Collect +M+ for MAGNET!</p>
     <br />
 
     <div id="difficultyButtons">
@@ -184,6 +199,7 @@
 
     <br/>
     <button class="btn" id="startBtn">./ START GAME</button>
+
 
     <div id="bestBlock">
       BEST EASY: <span id="bestEasy">0</span> |
@@ -224,7 +240,6 @@
 
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
-    const ui = document.getElementById('ui');
 
     function resizeCanvas() {
       canvas.width = window.innerWidth;
@@ -235,6 +250,7 @@
     ctx.imageSmoothingEnabled = false;
 
     const GLOBAL_GAME_TIME = 60000;
+    const POWERUP_DURATION = 5000;
 
     const difficulties = {
       easy: {
@@ -243,7 +259,9 @@
         enemySpeedBase: { min: 1.6, max: 3.1 },
         plusChance: 0.03,
         shieldChance: 0.012,
-        slowmoChance: 0.012
+        slowmoChance: 0.012,
+        multChance: 0.012,
+        magnetChance: 0.01
       },
       normal: {
         label: 'NORMAL',
@@ -251,52 +269,48 @@
         enemySpeedBase: { min: 2.1, max: 4.6 },
         plusChance: 0.018,
         shieldChance: 0.007,
-        slowmoChance: 0.007
+        slowmoChance: 0.007,
+        multChance: 0.01,
+        magnetChance: 0.008
       },
       hard: {
         label: 'HARD',
         enemySpawnBase: 0.09,
         enemySpeedBase: { min: 2.7, max: 5.7 },
-        plusChance: 0.015,   
-        shieldChance: 0.002, 
-        slowmoChance: 0.002
+        plusChance: 0.015,
+        shieldChance: 0.002,
+        slowmoChance: 0.002,
+        multChance: 0.008,
+        magnetChance: 0.006
       }
     };
 
     let currentDifficultyKey = 'easy';
-    let GAME_TIME = GLOBAL_GAME_TIME;
-    let enemySpawnBase = difficulties[currentDifficultyKey].enemySpawnBase;
-    let enemySpeedBase = {...difficulties[currentDifficultyKey].enemySpeedBase};
-    let plusChance = difficulties[currentDifficultyKey].plusChance;
-    let shieldChance = difficulties[currentDifficultyKey].shieldChance;
-    let slowmoChance = difficulties[currentDifficultyKey].slowmoChance;
+    let gameConfig = {...difficulties[currentDifficultyKey]};
 
-    const HS_KEY = 'dodgePlusHighscores_v1';
+    const HS_KEY = 'dodgePlusHighscores_v2.1';
     let highscores = loadHighscores();
     updateBestBlock();
+
+    const powerups = {
+      shield: { active: false, endTime: 0 },
+      slowmo: { active: false, endTime: 0 },
+      mult: { active: false, endTime: 0 },
+      magnet: { active: false, endTime: 0 }
+    };
 
     function loadHighscores() {
       try {
         const raw = localStorage.getItem(HS_KEY);
-        if (!raw) {
-          return { easy: 0, normal: 0, hard: 0 };
-        }
-        const parsed = JSON.parse(raw);
-        return {
-          easy: parsed.easy || 0,
-          normal: parsed.normal || 0,
-          hard: parsed.hard || 0
-        };
+        if (!raw) return { easy: 0, normal: 0, hard: 0 };
+        return JSON.parse(raw);
       } catch (e) {
         return { easy: 0, normal: 0, hard: 0 };
       }
     }
 
     function saveHighscores() {
-      try {
-        localStorage.setItem(HS_KEY, JSON.stringify(highscores));
-      } catch (e) {
-      }
+      localStorage.setItem(HS_KEY, JSON.stringify(highscores));
     }
 
     function updateBestBlock() {
@@ -315,105 +329,60 @@
       return false;
     }
 
-    const diffButtonsContainer = document.getElementById('difficultyButtons');
-    diffButtonsContainer.addEventListener('click', (e) => {
+    document.getElementById('difficultyButtons').addEventListener('click', (e) => {
       const btn = e.target.closest('button[data-diff]');
-      if (!btn) return;
-
-      const diff = btn.getAttribute('data-diff');
-      if (!difficulties[diff]) return;
-
-      currentDifficultyKey = diff;
-      const config = difficulties[diff];
-
-      enemySpawnBase = config.enemySpawnBase;
-      enemySpeedBase = {...config.enemySpeedBase};
-      plusChance = config.plusChance;
-      shieldChance = config.shieldChance;
-      slowmoChance = config.slowmoChance;
-
-      [...diffButtonsContainer.querySelectorAll('button')].forEach(b => {
-        b.classList.remove('btn-diff-active');
-      });
+      if (!btn || !difficulties[btn.dataset.diff]) return;
+      
+      currentDifficultyKey = btn.dataset.diff;
+      gameConfig = {...difficulties[currentDifficultyKey]};
+      
+      document.querySelectorAll('#difficultyButtons button').forEach(b => b.classList.remove('btn-diff-active'));
       btn.classList.add('btn-diff-active');
-
-      const diffLabel = document.getElementById('diffLabel');
-      if (diffLabel) {
-        diffLabel.textContent = `DIFF: ${config.label}`;
-      }
+      
+      document.getElementById('diffLabel').textContent = `DIFF: ${gameConfig.label}`;
     });
 
     let gameRunning = false;
     const PLAYER_SIZE = 28;
     const FONT = 'bold 26px monospace';
-    let player = { x: window.innerWidth / 2, y: window.innerHeight - 100, size: PLAYER_SIZE };
+    let player = { x: 0, y: 0, size: PLAYER_SIZE };
 
     let enemies = [];
-    let collectibles = [];    
-    let shieldPowerups = [];  
-    let slowmoPowerups = [];  
-
+    let collectibles = [];
     let score = 0;
     let startTime = 0;
-
-    let shieldActive = false;
-    let slowmoActive = false;
-    let slowmoEndTime = 0;
+    let scoreMultiplier = 1;
 
     const keys = {};
     document.addEventListener('keydown', (e) => {
       keys[e.code] = true;
       if (e.code === 'Space' && !gameRunning) e.preventDefault();
     });
-    document.addEventListener('keyup', (e) => {
-      keys[e.code] = false;
-    });
+    document.addEventListener('keyup', (e) => keys[e.code] = false);
 
     function createEnemy(difficultyFactor = 1) {
-      const speed = enemySpeedBase.min + Math.random() * (enemySpeedBase.max - enemySpeedBase.min) * difficultyFactor;
       return {
         x: Math.random() * (canvas.width - PLAYER_SIZE) + PLAYER_SIZE / 2,
         y: -PLAYER_SIZE,
         size: PLAYER_SIZE,
-        speed
+        speed: gameConfig.enemySpeedBase.min + Math.random() * (gameConfig.enemySpeedBase.max - gameConfig.enemySpeedBase.min) * difficultyFactor
       };
     }
 
-    function createCollectible() {
+    function createCollectible(type) {
       return {
-        type: '+',
-        x: Math.random() * (canvas.width - PLAYER_SIZE) + PLAYER_SIZE / 2,
+        type: type || '+',
+        x: Math.random() * (canvas.width - PLAYER_SIZE * 2) + PLAYER_SIZE,
         y: -PLAYER_SIZE,
         size: PLAYER_SIZE,
         speed: 1.5 + Math.random() * 1.5
       };
     }
 
-    function createShieldPowerup() {
-      return {
-        type: '*',
-        x: Math.random() * (canvas.width - PLAYER_SIZE) + PLAYER_SIZE / 2,
-        y: -PLAYER_SIZE,
-        size: PLAYER_SIZE,
-        speed: 1.3 + Math.random() * 1.2
-      };
-    }
-
-    function createSlowmoPowerup() {
-      return {
-        type: 'S',
-        x: Math.random() * (canvas.width - PLAYER_SIZE) + PLAYER_SIZE / 2,
-        y: -PLAYER_SIZE,
-        size: PLAYER_SIZE,
-        speed: 1.2 + Math.random() * 1.1
-      };
-    }
-
     function collided(obj1, obj2) {
       const dx = obj1.x - obj2.x;
       const dy = obj1.y - obj2.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      return dist < (obj1.size / 2 + obj2.size / 2) * 0.9;
+      return Math.sqrt(dx * dx + dy * dy) < (obj1.size / 2 + obj2.size / 2) * 0.9;
     }
 
     function clampPlayer() {
@@ -421,26 +390,66 @@
       player.y = Math.max(player.size / 2, Math.min(canvas.height - player.size / 2, player.y));
     }
 
-    function activateShield() {
-      shieldActive = true;
-      document.getElementById('shield').textContent = 'SHIELD: ON';
+    function activatePowerup(type) {
+      powerups[type].active = true;
+      powerups[type].endTime = Date.now() + POWERUP_DURATION;
+      
+      const el = document.getElementById(type);
+      const status = el.querySelector('span');
+      const labels = {
+        shield: 'SHIELD',
+        slowmo: 'SLOWMO', 
+        mult: 'X2',
+        magnet: '+M+'
+      };
+      status.textContent = labels[type] + ': ON';
+      status.className = 'status-on';
     }
 
-    function deactivateShield() {
-      shieldActive = false;
-      document.getElementById('shield').textContent = 'SHIELD: OFF';
+    function deactivatePowerup(type) {
+      powerups[type].active = false;
+      
+      const el = document.getElementById(type);
+      const status = el.querySelector('span');
+      const labels = {
+        shield: 'SHIELD',
+        slowmo: 'SLOWMO',
+        mult: 'X2', 
+        magnet: '+M+'
+      };
+      status.textContent = labels[type] + ': OFF';
+      status.className = 'status-off';
     }
 
-    function activateSlowmo(durationMs) {
-      slowmoActive = true;
-      slowmoEndTime = Date.now() + durationMs;
-      document.getElementById('slowmo').textContent = 'SLOWMO: ON';
+    function updatePowerups() {
+      Object.keys(powerups).forEach(type => {
+        if (powerups[type].active && Date.now() >= powerups[type].endTime) {
+          deactivatePowerup(type);
+        }
+      });
+      scoreMultiplier = powerups.mult.active ? 2 : 1;
     }
 
-    function updateSlowmo() {
-      if (slowmoActive && Date.now() >= slowmoEndTime) {
-        slowmoActive = false;
-        document.getElementById('slowmo').textContent = 'SLOWMO: OFF';
+    function magnetCollectibles() {
+      if (!powerups.magnet.active) return;
+      
+      for (let i = collectibles.length - 1; i >= 0; i--) {
+        const c = collectibles[i];
+        if (c.type !== '+') continue;
+        
+        const dx = player.x - c.x;
+        const dy = player.y - c.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        
+        if (dist < 120) {
+          c.x += (dx / dist) * 4;
+          c.y += (dy / dist) * 4;
+        }
+        
+        if (collided(player, c)) {
+          score += 10 * scoreMultiplier;
+          collectibles.splice(i, 1);
+        }
       }
     }
 
@@ -448,7 +457,7 @@
       if (!gameRunning) return;
 
       const baseSpeed = 8;
-      const moveSpeed = slowmoActive ? baseSpeed * 0.7 : baseSpeed;
+      const moveSpeed = powerups.slowmo.active ? baseSpeed * 0.7 : baseSpeed;
       if (keys['ArrowLeft'] || keys['KeyA']) player.x -= moveSpeed;
       if (keys['ArrowRight'] || keys['KeyD']) player.x += moveSpeed;
       if (keys['ArrowUp'] || keys['KeyW']) player.y -= moveSpeed;
@@ -457,32 +466,30 @@
       clampPlayer();
 
       const elapsed = Date.now() - startTime;
-      const timeFactor = Math.min(1.8, 1 + elapsed / GAME_TIME);
-      const slowFactor = slowmoActive ? 0.4 : 1;
+      const timeFactor = Math.min(1.8, 1 + elapsed / GLOBAL_GAME_TIME);
+      const slowFactor = powerups.slowmo.active ? 0.4 : 1;
 
-      enemies.forEach(enemy => enemy.y += enemy.speed * slowFactor);
+      enemies.forEach(e => e.y += e.speed * slowFactor);
       collectibles.forEach(c => c.y += c.speed * slowFactor);
-      shieldPowerups.forEach(p => p.y += p.speed * slowFactor);
-      slowmoPowerups.forEach(p => p.y += p.speed * slowFactor);
 
       const limit = canvas.height + 40;
       enemies = enemies.filter(e => e.y < limit);
       collectibles = collectibles.filter(c => c.y < limit);
-      shieldPowerups = shieldPowerups.filter(p => p.y < limit);
-      slowmoPowerups = slowmoPowerups.filter(p => p.y < limit);
 
-      const enemySpawnChance = enemySpawnBase * timeFactor;
-      if (Math.random() < enemySpawnChance) enemies.push(createEnemy(timeFactor));
-
-      if (Math.random() < plusChance) collectibles.push(createCollectible());
-      if (Math.random() < shieldChance) shieldPowerups.push(createShieldPowerup());
-      if (Math.random() < slowmoChance) slowmoPowerups.push(createSlowmoPowerup());
+      if (Math.random() < gameConfig.enemySpawnBase * timeFactor) {
+        enemies.push(createEnemy(timeFactor));
+      }
+      if (Math.random() < gameConfig.plusChance) collectibles.push(createCollectible('+'));
+      if (Math.random() < gameConfig.shieldChance) collectibles.push(createCollectible('shield'));
+      if (Math.random() < gameConfig.slowmoChance) collectibles.push(createCollectible('slowmo'));
+      if (Math.random() < gameConfig.multChance) collectibles.push(createCollectible('mult'));
+      if (Math.random() < gameConfig.magnetChance) collectibles.push(createCollectible('magnet'));
 
       for (let i = enemies.length - 1; i >= 0; i--) {
         if (collided(player, enemies[i])) {
-          if (shieldActive) {
+          if (powerups.shield.active) {
             enemies.splice(i, 1);
-            deactivateShield();
+            deactivatePowerup('shield');
           } else {
             gameOver();
             return;
@@ -491,46 +498,35 @@
       }
 
       for (let i = collectibles.length - 1; i >= 0; i--) {
-        if (collided(player, collectibles[i])) {
-          score += 10;
+        const item = collectibles[i];
+        if (collided(player, item)) {
+          if (item.type === '+') {
+            score += 10 * scoreMultiplier;
+          } else {
+            activatePowerup(item.type);
+          }
           collectibles.splice(i, 1);
         }
       }
 
-      for (let i = shieldPowerups.length - 1; i >= 0; i--) {
-        if (collided(player, shieldPowerups[i])) {
-          activateShield();
-          shieldPowerups.splice(i, 1);
-        }
-      }
-
-      for (let i = slowmoPowerups.length - 1; i >= 0; i--) {
-        if (collided(player, slowmoPowerups[i])) {
-          activateSlowmo(4000);
-          slowmoPowerups.splice(i, 1);
-        }
-      }
-
-      updateSlowmo();
+      magnetCollectibles();
+      updatePowerups();
 
       document.getElementById('score').textContent = `SCORE: ${score}`;
-      const timeLeft = Math.max(0, GAME_TIME - elapsed);
+      const timeLeft = Math.max(0, GLOBAL_GAME_TIME - elapsed);
       document.getElementById('time').textContent = `TIME: ${Math.floor(timeLeft / 1000)}s`;
 
-      if (elapsed >= GAME_TIME) {
-        gameWin();
-      }
+      if (elapsed >= GLOBAL_GAME_TIME) gameWin();
     }
 
-    // ---------- DRAW ----------
     function draw() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-
       ctx.font = FONT;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
 
-      if (shieldActive) {
+      // Shield
+      if (powerups.shield.active) {
         ctx.save();
         ctx.beginPath();
         ctx.arc(player.x, player.y, player.size, 0, Math.PI * 2);
@@ -542,12 +538,14 @@
         ctx.restore();
       }
 
+      // Player
       ctx.fillStyle = '#00ff41';
       ctx.shadowColor = '#00ff41';
       ctx.shadowBlur = 12;
       ctx.fillText('./', player.x, player.y);
       ctx.shadowBlur = 0;
 
+      // Enemies
       enemies.forEach(enemy => {
         ctx.fillStyle = '#ff0040';
         ctx.shadowColor = '#ff0040';
@@ -556,118 +554,100 @@
         ctx.shadowBlur = 0;
       });
 
+      // Collectibles
+      const colors = {
+        '+': '#bb00ff',
+        'shield': '#00bfff',
+        'slowmo': '#ffff00',
+        'mult': '#ff44ff',
+        'magnet': '#44ff44'
+      };
+      const icons = {
+        'shield': '*',
+        'slowmo': 'S', 
+        'mult': 'X2',
+        'magnet': '+M+'
+      };
+
       collectibles.forEach(c => {
-        ctx.fillStyle = '#bb00ff';
-        ctx.shadowColor = '#bb00ff';
+        const color = colors[c.type] || '#bb00ff';
+        const icon = icons[c.type] || c.type;
+        ctx.fillStyle = color;
+        ctx.shadowColor = color;
         ctx.shadowBlur = 12;
-        ctx.fillText('+', c.x, c.y);
-        ctx.shadowBlur = 0;
-      });
-
-      shieldPowerups.forEach(p => {
-        ctx.fillStyle = '#00bfff';
-        ctx.shadowColor = '#00bfff';
-        ctx.shadowBlur = 12;
-        ctx.fillText('*', p.x, p.y);
-        ctx.shadowBlur = 0;
-      });
-
-      slowmoPowerups.forEach(p => {
-        ctx.fillStyle = '#ffff00';
-        ctx.shadowColor = '#ffff00';
-        ctx.shadowBlur = 12;
-        ctx.fillText('S', p.x, p.y);
+        ctx.fillText(icon, c.x, c.y);
         ctx.shadowBlur = 0;
       });
     }
 
-    // ---------- MAIN LOOP ----------
     function gameLoop() {
       update();
       draw();
       requestAnimationFrame(gameLoop);
     }
 
-    // ---------- GAME FLOW ----------
     function startGame() {
-      const config = difficulties[currentDifficultyKey];
-
-      GAME_TIME = GLOBAL_GAME_TIME;
-      enemySpawnBase = config.enemySpawnBase;
-      enemySpeedBase = {...config.enemySpeedBase};
-      plusChance = config.plusChance;
-      shieldChance = config.shieldChance;
-      slowmoChance = config.slowmoChance;
-
+      gameConfig = {...difficulties[currentDifficultyKey]};
+      
       gameRunning = true;
       startTime = Date.now();
       score = 0;
+      scoreMultiplier = 1;
 
       player.x = canvas.width / 2;
       player.y = canvas.height - 100;
 
       enemies = [];
       collectibles = [];
-      shieldPowerups = [];
-      slowmoPowerups = [];
 
-      shieldActive = false;
-      slowmoActive = false;
-      document.getElementById('shield').textContent = 'SHIELD: OFF';
-      document.getElementById('slowmo').textContent = 'SLOWMO: OFF';
-      document.getElementById('diffLabel').textContent = `DIFF: ${config.label}`;
+      // Reset powerups
+      Object.keys(powerups).forEach(type => {
+        powerups[type].active = false;
+        powerups[type].endTime = 0;
+        const el = document.getElementById(type);
+        if (el) {
+          const status = el.querySelector('span');
+          const labels = {shield: 'SHIELD', slowmo: 'SLOWMO', mult: 'X2', magnet: '+M+'};
+          status.textContent = labels[type] + ': OFF';
+          status.className = 'status-off';
+        }
+      });
+
+      document.getElementById('diffLabel').textContent = `DIFF: ${gameConfig.label}`;
       document.getElementById('time').textContent = 'TIME: 60s';
       document.getElementById('score').textContent = 'SCORE: 0';
 
       document.getElementById('menu').style.display = 'none';
       document.getElementById('gameOver').style.display = 'none';
       canvas.style.display = 'block';
-      ui.style.opacity = '1';
+      document.getElementById('ui').style.opacity = '1';
     }
 
     function showMenu() {
       canvas.style.display = 'none';
       document.getElementById('gameOver').style.display = 'none';
       document.getElementById('menu').style.display = 'block';
-      ui.style.opacity = '0';
+      document.getElementById('ui').style.opacity = '0';
     }
 
     function endGameCommon(title) {
       gameRunning = false;
-
       const isNewBest = tryUpdateHighscore(currentDifficultyKey, score);
       const bestForMode = highscores[currentDifficultyKey] || 0;
-      const label = difficulties[currentDifficultyKey].label;
+      
+      document.getElementById('finalScore').textContent = `FINAL SCORE: ${score}`;
+      document.getElementById('finalBest').textContent = `BEST ${gameConfig.label}: ${bestForMode}` + (isNewBest ? ' (NEW!)' : '');
 
-      const finalScoreEl = document.getElementById('finalScore');
-      const finalBestEl = document.getElementById('finalBest');
-
-      finalScoreEl.textContent = `FINAL SCORE: ${score}`;
-      finalBestEl.textContent = `BEST ${label}: ${bestForMode}` + (isNewBest ? '  (NEW!)' : '');
-
-      showGameOver(
-        title === './ YOU WIN!' ? '#00ff41' : '#ff0040',
-        title === './ YOU WIN!' ? 'rgba(0, 255, 65, 0.5)' : 'rgba(255, 0, 64, 0.5)',
-        title
-      );
-    }
-
-    function gameOver() {
-      endGameCommon('./ GAME OVER');
-    }
-
-    function gameWin() {
-      endGameCommon('./ YOU WIN!');
-    }
-
-    function showGameOver(borderColor, shadowColor, title) {
       const go = document.getElementById('gameOver');
-      go.style.borderColor = borderColor;
-      go.style.boxShadow = `0 0 40px ${shadowColor}`;
+      go.style.borderColor = title.includes('WIN') ? '#00ff41' : '#ff0040';
+      go.style.boxShadow = `0 0 40px ${title.includes('WIN') ? 'rgba(0, 255, 65, 0.5)' : 'rgba(255, 0, 64, 0.5)'}`;
       go.querySelector('h2').textContent = title;
       go.style.display = 'block';
       bindGameOverButtons();
     }
+
+    function gameOver() { endGameCommon('./ GAME OVER'); }
+    function gameWin() { endGameCommon('./ YOU WIN!'); }
 
     function bindGameOverButtons() {
       document.getElementById('restartBtn').onclick = () => {
@@ -681,7 +661,6 @@
     }
 
     document.getElementById('startBtn').onclick = startGame;
-
     gameLoop();
   </script>
 </body>
