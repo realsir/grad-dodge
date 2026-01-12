@@ -2,14 +2,10 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>./ GRAD DODGE v3</title>
+  <title>./ GRAD DODGE v4</title>
   <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet" />
   <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
 
     body {
       font-family: 'Press Start 2P', monospace;
@@ -118,10 +114,7 @@
       line-height: 1.4;
     }
 
-    #ui span {
-      margin-right: 12px;
-      display: block;
-    }
+    #ui span { margin-right: 12px; display: block; }
 
     .status-on { color: #00ff41; text-shadow: 0 0 8px #00ff41; }
     .status-off { color: #666; }
@@ -165,6 +158,7 @@
       font-size: 12px;
       margin-top: 12px;
       color: #aaa;
+      line-height: 1.8;
     }
   </style>
 </head>
@@ -179,10 +173,11 @@
     <span id="mult"><span class="status-off">X2: OFF</span></span>
     <span id="magnet"><span class="status-off">+M+: OFF</span></span>
     <span id="diffLabel">DIFF: EASY</span>
+    <span id="modeLabel">MODE: ARCADE</span>
   </div>
 
   <div id="menu">
-    <h1>./ GRAD DODGE v3</h1>
+    <h1>./ GRAD DODGE v4</h1>
     <p>– Dodge X enemies!</p>
     <p>– Collect + for +10 points!</p>
     <p>– Collect * for SHIELD (1 hit)!</p>
@@ -197,14 +192,25 @@
       <button class="btn btn-small" data-diff="hard">HARD</button>
     </div>
 
+    <div id="modeButtons">
+      <button class="btn btn-small btn-diff-active" data-mode="arcade">ARCADE (60s)</button>
+      <button class="btn btn-small" data-mode="survival">SURVIVAL (∞)</button>
+    </div>
+
     <br/>
     <button class="btn" id="startBtn">./ START GAME</button>
 
-
     <div id="bestBlock">
-      BEST EASY: <span id="bestEasy">0</span> |
-      BEST NORMAL: <span id="bestNormal">0</span> |
-      BEST HARD: <span id="bestHard">0</span>
+      <div>
+        BEST ARCADE EASY: <span id="bestArcadeEasy">0</span> |
+        BEST ARCADE NORMAL: <span id="bestArcadeNormal">0</span> |
+        BEST ARCADE HARD: <span id="bestArcadeHard">0</span>
+      </div>
+      <div>
+        BEST SURVIVAL EASY: <span id="bestSurvivalEasy">0</span> |
+        BEST SURVIVAL NORMAL: <span id="bestSurvivalNormal">0</span> |
+        BEST SURVIVAL HARD: <span id="bestSurvivalHard">0</span>
+      </div>
     </div>
   </div>
 
@@ -227,9 +233,7 @@
       const rows = Math.floor(window.innerHeight / 16);
 
       for (let i = 0; i < rows; i++) {
-        for (let j = 0; j < cols; j++) {
-          content += './';
-        }
+        for (let j = 0; j < cols; j++) content += './';
         content += '\n';
       }
       grid.textContent = content;
@@ -249,7 +253,7 @@
     window.addEventListener('resize', resizeCanvas);
     ctx.imageSmoothingEnabled = false;
 
-    const GLOBAL_GAME_TIME = 60000;
+    const GLOBAL_GAME_TIME = 60000;   
     const POWERUP_DURATION = 5000;
 
     const difficulties = {
@@ -285,10 +289,20 @@
       }
     };
 
-    let currentDifficultyKey = 'easy';
-    let gameConfig = {...difficulties[currentDifficultyKey]};
+    const modes = {
+      arcade: { label: 'ARCADE', hasTimeLimit: true },
+      survival: { label: 'SURVIVAL', hasTimeLimit: false }
+    };
 
-    const HS_KEY = 'dodgePlusHighscores_v2.1';
+    let currentDifficultyKey = 'easy';
+    let currentModeKey = 'arcade';
+    let gameConfig = { ...difficulties[currentDifficultyKey] };
+
+    function makeHSKey(modeKey, diffKey) {
+      return `${modeKey}_${diffKey}`; 
+    }
+
+    const HS_KEY = 'dodgePlusHighscores_v3_modes';
     let highscores = loadHighscores();
     updateBestBlock();
 
@@ -299,13 +313,21 @@
       magnet: { active: false, endTime: 0 }
     };
 
+    function emptyHighscores() {
+      return {
+        arcade_easy: 0, arcade_normal: 0, arcade_hard: 0,
+        survival_easy: 0, survival_normal: 0, survival_hard: 0
+      };
+    }
+
     function loadHighscores() {
       try {
         const raw = localStorage.getItem(HS_KEY);
-        if (!raw) return { easy: 0, normal: 0, hard: 0 };
-        return JSON.parse(raw);
+        if (!raw) return emptyHighscores();
+        const parsed = JSON.parse(raw);
+        return { ...emptyHighscores(), ...parsed };
       } catch (e) {
-        return { easy: 0, normal: 0, hard: 0 };
+        return emptyHighscores();
       }
     }
 
@@ -314,14 +336,19 @@
     }
 
     function updateBestBlock() {
-      document.getElementById('bestEasy').textContent = highscores.easy;
-      document.getElementById('bestNormal').textContent = highscores.normal;
-      document.getElementById('bestHard').textContent = highscores.hard;
+      document.getElementById('bestArcadeEasy').textContent = highscores.arcade_easy || 0;
+      document.getElementById('bestArcadeNormal').textContent = highscores.arcade_normal || 0;
+      document.getElementById('bestArcadeHard').textContent = highscores.arcade_hard || 0;
+
+      document.getElementById('bestSurvivalEasy').textContent = highscores.survival_easy || 0;
+      document.getElementById('bestSurvivalNormal').textContent = highscores.survival_normal || 0;
+      document.getElementById('bestSurvivalHard').textContent = highscores.survival_hard || 0;
     }
 
-    function tryUpdateHighscore(modeKey, score) {
-      if (score > (highscores[modeKey] || 0)) {
-        highscores[modeKey] = score;
+    function tryUpdateHighscore(modeKey, diffKey, score) {
+      const k = makeHSKey(modeKey, diffKey);
+      if (score > (highscores[k] || 0)) {
+        highscores[k] = score;
         saveHighscores();
         updateBestBlock();
         return true;
@@ -332,14 +359,26 @@
     document.getElementById('difficultyButtons').addEventListener('click', (e) => {
       const btn = e.target.closest('button[data-diff]');
       if (!btn || !difficulties[btn.dataset.diff]) return;
-      
+
       currentDifficultyKey = btn.dataset.diff;
-      gameConfig = {...difficulties[currentDifficultyKey]};
-      
+      gameConfig = { ...difficulties[currentDifficultyKey] };
+
       document.querySelectorAll('#difficultyButtons button').forEach(b => b.classList.remove('btn-diff-active'));
       btn.classList.add('btn-diff-active');
-      
+
       document.getElementById('diffLabel').textContent = `DIFF: ${gameConfig.label}`;
+    });
+
+    document.getElementById('modeButtons').addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-mode]');
+      if (!btn || !modes[btn.dataset.mode]) return;
+
+      currentModeKey = btn.dataset.mode;
+
+      document.querySelectorAll('#modeButtons button').forEach(b => b.classList.remove('btn-diff-active'));
+      btn.classList.add('btn-diff-active');
+
+      document.getElementById('modeLabel').textContent = `MODE: ${modes[currentModeKey].label}`;
     });
 
     let gameRunning = false;
@@ -365,7 +404,8 @@
         x: Math.random() * (canvas.width - PLAYER_SIZE) + PLAYER_SIZE / 2,
         y: -PLAYER_SIZE,
         size: PLAYER_SIZE,
-        speed: gameConfig.enemySpeedBase.min + Math.random() * (gameConfig.enemySpeedBase.max - gameConfig.enemySpeedBase.min) * difficultyFactor
+        speed: gameConfig.enemySpeedBase.min +
+          Math.random() * (gameConfig.enemySpeedBase.max - gameConfig.enemySpeedBase.min) * difficultyFactor
       };
     }
 
@@ -393,59 +433,47 @@
     function activatePowerup(type) {
       powerups[type].active = true;
       powerups[type].endTime = Date.now() + POWERUP_DURATION;
-      
+
       const el = document.getElementById(type);
       const status = el.querySelector('span');
-      const labels = {
-        shield: 'SHIELD',
-        slowmo: 'SLOWMO', 
-        mult: 'X2',
-        magnet: '+M+'
-      };
+      const labels = { shield: 'SHIELD', slowmo: 'SLOWMO', mult: 'X2', magnet: '+M+' };
       status.textContent = labels[type] + ': ON';
       status.className = 'status-on';
     }
 
     function deactivatePowerup(type) {
       powerups[type].active = false;
-      
+
       const el = document.getElementById(type);
       const status = el.querySelector('span');
-      const labels = {
-        shield: 'SHIELD',
-        slowmo: 'SLOWMO',
-        mult: 'X2', 
-        magnet: '+M+'
-      };
+      const labels = { shield: 'SHIELD', slowmo: 'SLOWMO', mult: 'X2', magnet: '+M+' };
       status.textContent = labels[type] + ': OFF';
       status.className = 'status-off';
     }
 
     function updatePowerups() {
       Object.keys(powerups).forEach(type => {
-        if (powerups[type].active && Date.now() >= powerups[type].endTime) {
-          deactivatePowerup(type);
-        }
+        if (powerups[type].active && Date.now() >= powerups[type].endTime) deactivatePowerup(type);
       });
       scoreMultiplier = powerups.mult.active ? 2 : 1;
     }
 
     function magnetCollectibles() {
       if (!powerups.magnet.active) return;
-      
+
       for (let i = collectibles.length - 1; i >= 0; i--) {
         const c = collectibles[i];
         if (c.type !== '+') continue;
-        
+
         const dx = player.x - c.x;
         const dy = player.y - c.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
-        
+
         if (dist < 120) {
           c.x += (dx / dist) * 4;
           c.y += (dy / dist) * 4;
         }
-        
+
         if (collided(player, c)) {
           score += 10 * scoreMultiplier;
           collectibles.splice(i, 1);
@@ -466,7 +494,7 @@
       clampPlayer();
 
       const elapsed = Date.now() - startTime;
-      const timeFactor = Math.min(1.8, 1 + elapsed / GLOBAL_GAME_TIME);
+      const timeFactor = Math.min(1.8, 1 + elapsed / GLOBAL_GAME_TIME); 
       const slowFactor = powerups.slowmo.active ? 0.4 : 1;
 
       enemies.forEach(e => e.y += e.speed * slowFactor);
@@ -476,9 +504,7 @@
       enemies = enemies.filter(e => e.y < limit);
       collectibles = collectibles.filter(c => c.y < limit);
 
-      if (Math.random() < gameConfig.enemySpawnBase * timeFactor) {
-        enemies.push(createEnemy(timeFactor));
-      }
+      if (Math.random() < gameConfig.enemySpawnBase * timeFactor) enemies.push(createEnemy(timeFactor));
       if (Math.random() < gameConfig.plusChance) collectibles.push(createCollectible('+'));
       if (Math.random() < gameConfig.shieldChance) collectibles.push(createCollectible('shield'));
       if (Math.random() < gameConfig.slowmoChance) collectibles.push(createCollectible('slowmo'));
@@ -500,11 +526,8 @@
       for (let i = collectibles.length - 1; i >= 0; i--) {
         const item = collectibles[i];
         if (collided(player, item)) {
-          if (item.type === '+') {
-            score += 10 * scoreMultiplier;
-          } else {
-            activatePowerup(item.type);
-          }
+          if (item.type === '+') score += 10 * scoreMultiplier;
+          else activatePowerup(item.type);
           collectibles.splice(i, 1);
         }
       }
@@ -513,10 +536,14 @@
       updatePowerups();
 
       document.getElementById('score').textContent = `SCORE: ${score}`;
-      const timeLeft = Math.max(0, GLOBAL_GAME_TIME - elapsed);
-      document.getElementById('time').textContent = `TIME: ${Math.floor(timeLeft / 1000)}s`;
 
-      if (elapsed >= GLOBAL_GAME_TIME) gameWin();
+      if (modes[currentModeKey].hasTimeLimit) {
+        const timeLeft = Math.max(0, GLOBAL_GAME_TIME - elapsed);
+        document.getElementById('time').textContent = `TIME: ${Math.floor(timeLeft / 1000)}s`;
+        if (elapsed >= GLOBAL_GAME_TIME) gameWin();
+      } else {
+        document.getElementById('time').textContent = 'TIME: ∞';
+      }
     }
 
     function draw() {
@@ -525,7 +552,6 @@
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
 
-      // Shield
       if (powerups.shield.active) {
         ctx.save();
         ctx.beginPath();
@@ -538,14 +564,12 @@
         ctx.restore();
       }
 
-      // Player
       ctx.fillStyle = '#00ff41';
       ctx.shadowColor = '#00ff41';
       ctx.shadowBlur = 12;
       ctx.fillText('./', player.x, player.y);
       ctx.shadowBlur = 0;
 
-      // Enemies
       enemies.forEach(enemy => {
         ctx.fillStyle = '#ff0040';
         ctx.shadowColor = '#ff0040';
@@ -554,20 +578,14 @@
         ctx.shadowBlur = 0;
       });
 
-      // Collectibles
       const colors = {
         '+': '#bb00ff',
-        'shield': '#00bfff',
-        'slowmo': '#ffff00',
-        'mult': '#ff44ff',
-        'magnet': '#44ff44'
+        shield: '#00bfff',
+        slowmo: '#ffff00',
+        mult: '#ff44ff',
+        magnet: '#44ff44'
       };
-      const icons = {
-        'shield': '*',
-        'slowmo': 'S', 
-        'mult': 'X2',
-        'magnet': '+M+'
-      };
+      const icons = { shield: '*', slowmo: 'S', mult: 'X2', magnet: '+M+' };
 
       collectibles.forEach(c => {
         const color = colors[c.type] || '#bb00ff';
@@ -586,36 +604,39 @@
       requestAnimationFrame(gameLoop);
     }
 
+    function resetPowerupsUI() {
+      Object.keys(powerups).forEach(type => {
+        powerups[type].active = false;
+        powerups[type].endTime = 0;
+
+        const el = document.getElementById(type);
+        if (!el) return;
+        const status = el.querySelector('span');
+        const labels = { shield: 'SHIELD', slowmo: 'SLOWMO', mult: 'X2', magnet: '+M+' };
+        status.textContent = labels[type] + ': OFF';
+        status.className = 'status-off';
+      });
+      scoreMultiplier = 1;
+    }
+
     function startGame() {
-      gameConfig = {...difficulties[currentDifficultyKey]};
-      
+      gameConfig = { ...difficulties[currentDifficultyKey] };
+
       gameRunning = true;
       startTime = Date.now();
       score = 0;
-      scoreMultiplier = 1;
 
       player.x = canvas.width / 2;
       player.y = canvas.height - 100;
 
       enemies = [];
       collectibles = [];
-
-      // Reset powerups
-      Object.keys(powerups).forEach(type => {
-        powerups[type].active = false;
-        powerups[type].endTime = 0;
-        const el = document.getElementById(type);
-        if (el) {
-          const status = el.querySelector('span');
-          const labels = {shield: 'SHIELD', slowmo: 'SLOWMO', mult: 'X2', magnet: '+M+'};
-          status.textContent = labels[type] + ': OFF';
-          status.className = 'status-off';
-        }
-      });
+      resetPowerupsUI();
 
       document.getElementById('diffLabel').textContent = `DIFF: ${gameConfig.label}`;
-      document.getElementById('time').textContent = 'TIME: 60s';
+      document.getElementById('modeLabel').textContent = `MODE: ${modes[currentModeKey].label}`;
       document.getElementById('score').textContent = 'SCORE: 0';
+      document.getElementById('time').textContent = modes[currentModeKey].hasTimeLimit ? 'TIME: 60s' : 'TIME: ∞';
 
       document.getElementById('menu').style.display = 'none';
       document.getElementById('gameOver').style.display = 'none';
@@ -632,11 +653,13 @@
 
     function endGameCommon(title) {
       gameRunning = false;
-      const isNewBest = tryUpdateHighscore(currentDifficultyKey, score);
-      const bestForMode = highscores[currentDifficultyKey] || 0;
-      
+
+      const isNewBest = tryUpdateHighscore(currentModeKey, currentDifficultyKey, score);
+      const bestForMode = highscores[makeHSKey(currentModeKey, currentDifficultyKey)] || 0;
+
       document.getElementById('finalScore').textContent = `FINAL SCORE: ${score}`;
-      document.getElementById('finalBest').textContent = `BEST ${gameConfig.label}: ${bestForMode}` + (isNewBest ? ' (NEW!)' : '');
+      document.getElementById('finalBest').textContent =
+        `BEST ${modes[currentModeKey].label} ${gameConfig.label}: ${bestForMode}` + (isNewBest ? ' (NEW!)' : '');
 
       const go = document.getElementById('gameOver');
       go.style.borderColor = title.includes('WIN') ? '#00ff41' : '#ff0040';
