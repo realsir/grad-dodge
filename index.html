@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>./ GRAD DODGE v4</title>
+  <title>./ GRAD DODGE v5</title>
   <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet" />
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -36,6 +36,20 @@
     @keyframes gridGlow {
       0% { opacity: 0.15; color: #00aa28; }
       100% { opacity: 0.35; color: #00ff41; }
+    }
+
+    body.glitch #bg-grid {
+      animation: gridGlitch 0.12s linear infinite;
+      opacity: 0.5;
+      filter: hue-rotate(45deg);
+    }
+    @keyframes gridGlitch {
+      0% { opacity: 0.12; transform: translate(0, 0); }
+      20% { opacity: 0.55; transform: translate(-1px, 0); }
+      40% { opacity: 0.20; transform: translate(2px, 1px); }
+      60% { opacity: 0.60; transform: translate(-2px, -1px); }
+      80% { opacity: 0.25; transform: translate(1px, -1px); }
+      100% { opacity: 0.45; transform: translate(0, 0); }
     }
 
     #menu {
@@ -85,7 +99,7 @@
       margin: 6px;
     }
 
-    .btn-diff-active {
+    .btn-active {
       background: #00ccff;
       box-shadow: 0 0 20px rgba(0, 204, 255, 0.8);
     }
@@ -110,8 +124,14 @@
       text-shadow: 0 0 5px #00ff41;
       user-select: none;
       opacity: 0;
-      transition: opacity 0.3s;
+      transition: opacity 0.3s, color 0.1s;
       line-height: 1.4;
+      color: #00ff41;
+    }
+
+    body.glitch #ui {
+      color: #ff44ff;
+      text-shadow: 0 0 8px #ff44ff;
     }
 
     #ui span { margin-right: 12px; display: block; }
@@ -147,13 +167,6 @@
       color: #ccc;
     }
 
-    #powerupInfo {
-      font-size: 12px;
-      margin-top: 18px;
-      line-height: 1.7;
-      color: #ccc;
-    }
-
     #bestBlock {
       font-size: 12px;
       margin-top: 12px;
@@ -172,29 +185,32 @@
     <span id="slowmo"><span class="status-off">SLOWMO: OFF</span></span>
     <span id="mult"><span class="status-off">X2: OFF</span></span>
     <span id="magnet"><span class="status-off">+M+: OFF</span></span>
+    <span id="glitch"><span class="status-off">GLITCH: OFF</span></span>
     <span id="diffLabel">DIFF: EASY</span>
     <span id="modeLabel">MODE: ARCADE</span>
   </div>
 
   <div id="menu">
-    <h1>./ GRAD DODGE v4</h1>
+    <h1>./ GRAD DODGE v5</h1>
     <p>– Dodge X enemies!</p>
     <p>– Collect + for +10 points!</p>
     <p>– Collect * for SHIELD (1 hit)!</p>
     <p>– Collect S to SLOW TIME!</p>
     <p>– Collect X2 for SCORE x2!</p>
     <p>– Collect +M+ for MAGNET!</p>
+    <p>– GLITCH: world movement can invert</p>
     <br />
 
     <div id="difficultyButtons">
-      <button class="btn btn-small btn-diff-active" data-diff="easy">EASY</button>
+      <button class="btn btn-small btn-active" data-diff="easy">EASY</button>
       <button class="btn btn-small" data-diff="normal">NORMAL</button>
       <button class="btn btn-small" data-diff="hard">HARD</button>
     </div>
 
     <div id="modeButtons">
-      <button class="btn btn-small btn-diff-active" data-mode="arcade">ARCADE (60s)</button>
+      <button class="btn btn-small btn-active" data-mode="arcade">ARCADE (60s)</button>
       <button class="btn btn-small" data-mode="survival">SURVIVAL (∞)</button>
+      <button class="btn btn-small" data-mode="glitch">GLITCH (60s)</button>
     </div>
 
     <br/>
@@ -210,6 +226,11 @@
         BEST SURVIVAL EASY: <span id="bestSurvivalEasy">0</span> |
         BEST SURVIVAL NORMAL: <span id="bestSurvivalNormal">0</span> |
         BEST SURVIVAL HARD: <span id="bestSurvivalHard">0</span>
+      </div>
+      <div>
+        BEST GLITCH EASY: <span id="bestGlitchEasy">0</span> |
+        BEST GLITCH NORMAL: <span id="bestGlitchNormal">0</span> |
+        BEST GLITCH HARD: <span id="bestGlitchHard">0</span>
       </div>
     </div>
   </div>
@@ -231,14 +252,12 @@
       let content = '';
       const cols = Math.floor(window.innerWidth / 14);
       const rows = Math.floor(window.innerHeight / 16);
-
       for (let i = 0; i < rows; i++) {
         for (let j = 0; j < cols; j++) content += './';
         content += '\n';
       }
       grid.textContent = content;
     }
-
     createBgGrid();
     window.addEventListener('resize', createBgGrid);
 
@@ -248,13 +267,24 @@
     function resizeCanvas() {
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
+      ctx.imageSmoothingEnabled = false;
     }
     resizeCanvas();
     window.addEventListener('resize', resizeCanvas);
-    ctx.imageSmoothingEnabled = false;
 
-    const GLOBAL_GAME_TIME = 60000;   
+    const GLOBAL_GAME_TIME = 60000;
     const POWERUP_DURATION = 5000;
+
+    const PLAYER_SIZE = 28;
+    const FONT = 'bold 26px monospace';
+
+    const GLITCH_SCORE_BONUS = 1.25;    
+    const GLITCH_MIN_COOLDOWN = 10000;  
+    const GLITCH_MAX_COOLDOWN = 15000;  
+    const GLITCH_MIN_DURATION = 4000;   
+    const GLITCH_MAX_DURATION = 6000;  
+
+    const GLITCH_DRIFT_SPEED = 3.2;
 
     const difficulties = {
       easy: {
@@ -290,33 +320,22 @@
     };
 
     const modes = {
-      arcade: { label: 'ARCADE', hasTimeLimit: true },
-      survival: { label: 'SURVIVAL', hasTimeLimit: false }
+      arcade: { label: 'ARCADE', hasTimeLimit: true, glitchEnabled: false },
+      survival: { label: 'SURVIVAL', hasTimeLimit: false, glitchEnabled: false },
+      glitch: { label: 'GLITCH', hasTimeLimit: true, glitchEnabled: true }
     };
 
     let currentDifficultyKey = 'easy';
     let currentModeKey = 'arcade';
     let gameConfig = { ...difficulties[currentDifficultyKey] };
 
-    function makeHSKey(modeKey, diffKey) {
-      return `${modeKey}_${diffKey}`; 
-    }
-
-    const HS_KEY = 'dodgePlusHighscores_v3_modes';
-    let highscores = loadHighscores();
-    updateBestBlock();
-
-    const powerups = {
-      shield: { active: false, endTime: 0 },
-      slowmo: { active: false, endTime: 0 },
-      mult: { active: false, endTime: 0 },
-      magnet: { active: false, endTime: 0 }
-    };
+    const HS_KEY = 'dodgePlusHighscores_v4_world_glitch';
 
     function emptyHighscores() {
       return {
         arcade_easy: 0, arcade_normal: 0, arcade_hard: 0,
-        survival_easy: 0, survival_normal: 0, survival_hard: 0
+        survival_easy: 0, survival_normal: 0, survival_hard: 0,
+        glitch_easy: 0, glitch_normal: 0, glitch_hard: 0
       };
     }
 
@@ -326,13 +345,17 @@
         if (!raw) return emptyHighscores();
         const parsed = JSON.parse(raw);
         return { ...emptyHighscores(), ...parsed };
-      } catch (e) {
+      } catch {
         return emptyHighscores();
       }
     }
 
     function saveHighscores() {
       localStorage.setItem(HS_KEY, JSON.stringify(highscores));
+    }
+
+    function makeHSKey(modeKey, diffKey) {
+      return `${modeKey}_${diffKey}`;
     }
 
     function updateBestBlock() {
@@ -343,6 +366,10 @@
       document.getElementById('bestSurvivalEasy').textContent = highscores.survival_easy || 0;
       document.getElementById('bestSurvivalNormal').textContent = highscores.survival_normal || 0;
       document.getElementById('bestSurvivalHard').textContent = highscores.survival_hard || 0;
+
+      document.getElementById('bestGlitchEasy').textContent = highscores.glitch_easy || 0;
+      document.getElementById('bestGlitchNormal').textContent = highscores.glitch_normal || 0;
+      document.getElementById('bestGlitchHard').textContent = highscores.glitch_hard || 0;
     }
 
     function tryUpdateHighscore(modeKey, diffKey, score) {
@@ -356,41 +383,8 @@
       return false;
     }
 
-    document.getElementById('difficultyButtons').addEventListener('click', (e) => {
-      const btn = e.target.closest('button[data-diff]');
-      if (!btn || !difficulties[btn.dataset.diff]) return;
-
-      currentDifficultyKey = btn.dataset.diff;
-      gameConfig = { ...difficulties[currentDifficultyKey] };
-
-      document.querySelectorAll('#difficultyButtons button').forEach(b => b.classList.remove('btn-diff-active'));
-      btn.classList.add('btn-diff-active');
-
-      document.getElementById('diffLabel').textContent = `DIFF: ${gameConfig.label}`;
-    });
-
-    document.getElementById('modeButtons').addEventListener('click', (e) => {
-      const btn = e.target.closest('button[data-mode]');
-      if (!btn || !modes[btn.dataset.mode]) return;
-
-      currentModeKey = btn.dataset.mode;
-
-      document.querySelectorAll('#modeButtons button').forEach(b => b.classList.remove('btn-diff-active'));
-      btn.classList.add('btn-diff-active');
-
-      document.getElementById('modeLabel').textContent = `MODE: ${modes[currentModeKey].label}`;
-    });
-
-    let gameRunning = false;
-    const PLAYER_SIZE = 28;
-    const FONT = 'bold 26px monospace';
-    let player = { x: 0, y: 0, size: PLAYER_SIZE };
-
-    let enemies = [];
-    let collectibles = [];
-    let score = 0;
-    let startTime = 0;
-    let scoreMultiplier = 1;
+    let highscores = loadHighscores();
+    updateBestBlock();
 
     const keys = {};
     document.addEventListener('keydown', (e) => {
@@ -398,6 +392,58 @@
       if (e.code === 'Space' && !gameRunning) e.preventDefault();
     });
     document.addEventListener('keyup', (e) => keys[e.code] = false);
+
+    let gameRunning = false;
+
+    let player = { x: 0, y: 0, size: PLAYER_SIZE };
+    let enemies = [];
+    let collectibles = [];
+    let score = 0;
+    let startTime = 0;
+    let scoreMultiplier = 1;
+
+    const powerups = {
+      shield: { active: false, endTime: 0 },
+      slowmo: { active: false, endTime: 0 },
+      mult: { active: false, endTime: 0 },
+      magnet: { active: false, endTime: 0 }
+    };
+
+    let glitchState = {
+      active: false,
+      endTime: 0,
+      nextTime: 0,
+      type: 'invert' 
+    };
+
+    function randInt(min, max) {
+      return Math.floor(Math.random() * (max - min + 1)) + min;
+    }
+
+    function scheduleNextGlitch(now) {
+      glitchState.nextTime = now + randInt(GLITCH_MIN_COOLDOWN, GLITCH_MAX_COOLDOWN);
+    }
+
+    function setGlitchUI(on) {
+      const el = document.getElementById('glitch');
+      const status = el.querySelector('span');
+      status.textContent = on ? `GLITCH: ON (${glitchState.type.toUpperCase()})` : 'GLITCH: OFF';
+      status.className = on ? 'status-on' : 'status-off';
+      document.body.classList.toggle('glitch', !!on);
+    }
+
+    function startGlitch(now) {
+      glitchState.active = true;
+      glitchState.type = Math.random() < 0.5 ? 'invert' : 'swap';
+      glitchState.endTime = now + randInt(GLITCH_MIN_DURATION, GLITCH_MAX_DURATION);
+      setGlitchUI(true);
+    }
+
+    function stopGlitch() {
+      glitchState.active = false;
+      glitchState.endTime = 0;
+      setGlitchUI(false);
+    }
 
     function createEnemy(difficultyFactor = 1) {
       return {
@@ -419,10 +465,10 @@
       };
     }
 
-    function collided(obj1, obj2) {
-      const dx = obj1.x - obj2.x;
-      const dy = obj1.y - obj2.y;
-      return Math.sqrt(dx * dx + dy * dy) < (obj1.size / 2 + obj2.size / 2) * 0.9;
+    function collided(a, b) {
+      const dx = a.x - b.x;
+      const dy = a.y - b.y;
+      return Math.sqrt(dx * dx + dy * dy) < (a.size / 2 + b.size / 2) * 0.9;
     }
 
     function clampPlayer() {
@@ -452,10 +498,80 @@
     }
 
     function updatePowerups() {
-      Object.keys(powerups).forEach(type => {
-        if (powerups[type].active && Date.now() >= powerups[type].endTime) deactivatePowerup(type);
-      });
+      const now = Date.now();
+      for (const type of Object.keys(powerups)) {
+        if (powerups[type].active && now >= powerups[type].endTime) deactivatePowerup(type);
+      }
       scoreMultiplier = powerups.mult.active ? 2 : 1;
+    }
+
+    function addScore(basePoints) {
+      const modeBonus = (currentModeKey === 'glitch') ? GLITCH_SCORE_BONUS : 1;
+      score += Math.floor(basePoints * scoreMultiplier * modeBonus);
+    }
+
+    function readPlayerMove() {
+      const baseSpeed = 8;
+      const moveSpeed = powerups.slowmo.active ? baseSpeed * 0.7 : baseSpeed;
+
+      let dx = 0, dy = 0;
+      if (keys['ArrowLeft'] || keys['KeyA']) dx -= 1;
+      if (keys['ArrowRight'] || keys['KeyD']) dx += 1;
+      if (keys['ArrowUp'] || keys['KeyW']) dy -= 1;
+      if (keys['ArrowDown'] || keys['KeyS']) dy += 1;
+
+      return { vx: dx * moveSpeed, vy: dy * moveSpeed };
+    }
+
+    function applyWorldGlitchToVelocity(vx, vy) {
+      if (!(modes[currentModeKey].glitchEnabled && glitchState.active)) return { vx, vy };
+
+      if (glitchState.type === 'invert') {
+        return { vx: -vx, vy: -vy };
+      }
+
+      const swappedVX = vy;                 
+      const driftVY = (vx === 0 ? 0 : vx); 
+      return { vx: swappedVX, vy: driftVY };
+    }
+
+    function moveEnemiesAndItems(slowFactor) {
+
+      for (const e of enemies) {
+        let vx = 0;
+        let vy = e.speed * slowFactor;
+
+        if (modes[currentModeKey].glitchEnabled && glitchState.active && glitchState.type === 'swap') {
+          vx = (Math.random() < 0.5 ? -1 : 1) * GLITCH_DRIFT_SPEED;
+        }
+
+        const t = applyWorldGlitchToVelocity(vx, vy);
+        e.x += t.vx;
+        e.y += t.vy;
+      }
+
+      for (const c of collectibles) {
+        let vx = 0;
+        let vy = c.speed * slowFactor;
+
+        if (modes[currentModeKey].glitchEnabled && glitchState.active && glitchState.type === 'swap') {
+          vx = (Math.random() < 0.5 ? -1 : 1) * (GLITCH_DRIFT_SPEED * 0.85);
+        }
+
+        const t = applyWorldGlitchToVelocity(vx, vy);
+        c.x += t.vx;
+        c.y += t.vy;
+      }
+    }
+
+    function clampObjects() {
+
+      const pad = 120;
+      const minX = -pad, maxX = canvas.width + pad;
+      const minY = -pad, maxY = canvas.height + pad;
+
+      enemies = enemies.filter(e => e.x > minX && e.x < maxX && e.y > minY && e.y < maxY);
+      collectibles = collectibles.filter(c => c.x > minX && c.x < maxX && c.y > minY && c.y < maxY);
     }
 
     function magnetCollectibles() {
@@ -467,7 +583,7 @@
 
         const dx = player.x - c.x;
         const dy = player.y - c.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
+        const dist = Math.sqrt(dx * dx + dy * dy) || 0.0001;
 
         if (dist < 120) {
           c.x += (dx / dist) * 4;
@@ -475,7 +591,7 @@
         }
 
         if (collided(player, c)) {
-          score += 10 * scoreMultiplier;
+          addScore(10);
           collectibles.splice(i, 1);
         }
       }
@@ -484,25 +600,29 @@
     function update() {
       if (!gameRunning) return;
 
-      const baseSpeed = 8;
-      const moveSpeed = powerups.slowmo.active ? baseSpeed * 0.7 : baseSpeed;
-      if (keys['ArrowLeft'] || keys['KeyA']) player.x -= moveSpeed;
-      if (keys['ArrowRight'] || keys['KeyD']) player.x += moveSpeed;
-      if (keys['ArrowUp'] || keys['KeyW']) player.y -= moveSpeed;
-      if (keys['ArrowDown'] || keys['KeyS']) player.y += moveSpeed;
+      const now = Date.now();
 
+      if (modes[currentModeKey].glitchEnabled) {
+        if (!glitchState.active && now >= glitchState.nextTime) startGlitch(now);
+        if (glitchState.active && now >= glitchState.endTime) {
+          stopGlitch();
+          scheduleNextGlitch(now);
+        }
+      } else {
+        if (glitchState.active) stopGlitch();
+      }
+
+      const mv = readPlayerMove();
+      player.x += mv.vx;
+      player.y += mv.vy;
       clampPlayer();
 
-      const elapsed = Date.now() - startTime;
-      const timeFactor = Math.min(1.8, 1 + elapsed / GLOBAL_GAME_TIME); 
+      const elapsed = now - startTime;
+      const timeFactor = Math.min(1.8, 1 + elapsed / GLOBAL_GAME_TIME);
       const slowFactor = powerups.slowmo.active ? 0.4 : 1;
 
-      enemies.forEach(e => e.y += e.speed * slowFactor);
-      collectibles.forEach(c => c.y += c.speed * slowFactor);
-
-      const limit = canvas.height + 40;
-      enemies = enemies.filter(e => e.y < limit);
-      collectibles = collectibles.filter(c => c.y < limit);
+      moveEnemiesAndItems(slowFactor);
+      clampObjects();
 
       if (Math.random() < gameConfig.enemySpawnBase * timeFactor) enemies.push(createEnemy(timeFactor));
       if (Math.random() < gameConfig.plusChance) collectibles.push(createCollectible('+'));
@@ -525,11 +645,12 @@
 
       for (let i = collectibles.length - 1; i >= 0; i--) {
         const item = collectibles[i];
-        if (collided(player, item)) {
-          if (item.type === '+') score += 10 * scoreMultiplier;
-          else activatePowerup(item.type);
-          collectibles.splice(i, 1);
-        }
+        if (!collided(player, item)) continue;
+
+        if (item.type === '+') addScore(10);
+        else activatePowerup(item.type);
+
+        collectibles.splice(i, 1);
       }
 
       magnetCollectibles();
@@ -570,11 +691,11 @@
       ctx.fillText('./', player.x, player.y);
       ctx.shadowBlur = 0;
 
-      enemies.forEach(enemy => {
+      enemies.forEach(e => {
         ctx.fillStyle = '#ff0040';
         ctx.shadowColor = '#ff0040';
         ctx.shadowBlur = 12;
-        ctx.fillText('X', enemy.x, enemy.y);
+        ctx.fillText('X', e.x, e.y);
         ctx.shadowBlur = 0;
       });
 
@@ -604,25 +725,26 @@
       requestAnimationFrame(gameLoop);
     }
 
+    // ---------- UI / LIFECYCLE ----------
     function resetPowerupsUI() {
-      Object.keys(powerups).forEach(type => {
+      for (const type of Object.keys(powerups)) {
         powerups[type].active = false;
         powerups[type].endTime = 0;
 
         const el = document.getElementById(type);
-        if (!el) return;
+        if (!el) continue;
         const status = el.querySelector('span');
         const labels = { shield: 'SHIELD', slowmo: 'SLOWMO', mult: 'X2', magnet: '+M+' };
         status.textContent = labels[type] + ': OFF';
         status.className = 'status-off';
-      });
+      }
       scoreMultiplier = 1;
     }
 
     function startGame() {
       gameConfig = { ...difficulties[currentDifficultyKey] };
-
       gameRunning = true;
+
       startTime = Date.now();
       score = 0;
 
@@ -632,6 +754,9 @@
       enemies = [];
       collectibles = [];
       resetPowerupsUI();
+
+      stopGlitch();
+      scheduleNextGlitch(Date.now());
 
       document.getElementById('diffLabel').textContent = `DIFF: ${gameConfig.label}`;
       document.getElementById('modeLabel').textContent = `MODE: ${modes[currentModeKey].label}`;
@@ -649,10 +774,12 @@
       document.getElementById('gameOver').style.display = 'none';
       document.getElementById('menu').style.display = 'block';
       document.getElementById('ui').style.opacity = '0';
+      stopGlitch();
     }
 
     function endGameCommon(title) {
       gameRunning = false;
+      stopGlitch();
 
       const isNewBest = tryUpdateHighscore(currentModeKey, currentDifficultyKey, score);
       const bestForMode = highscores[makeHSKey(currentModeKey, currentDifficultyKey)] || 0;
@@ -666,6 +793,7 @@
       go.style.boxShadow = `0 0 40px ${title.includes('WIN') ? 'rgba(0, 255, 65, 0.5)' : 'rgba(255, 0, 64, 0.5)'}`;
       go.querySelector('h2').textContent = title;
       go.style.display = 'block';
+
       bindGameOverButtons();
     }
 
@@ -683,7 +811,34 @@
       };
     }
 
+    // ---------- MENU BUTTONS ----------
+    document.getElementById('difficultyButtons').addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-diff]');
+      if (!btn || !difficulties[btn.dataset.diff]) return;
+
+      currentDifficultyKey = btn.dataset.diff;
+      gameConfig = { ...difficulties[currentDifficultyKey] };
+
+      document.querySelectorAll('#difficultyButtons button').forEach(b => b.classList.remove('btn-active'));
+      btn.classList.add('btn-active');
+
+      document.getElementById('diffLabel').textContent = `DIFF: ${gameConfig.label}`;
+    });
+
+    document.getElementById('modeButtons').addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-mode]');
+      if (!btn || !modes[btn.dataset.mode]) return;
+
+      currentModeKey = btn.dataset.mode;
+
+      document.querySelectorAll('#modeButtons button').forEach(b => b.classList.remove('btn-active'));
+      btn.classList.add('btn-active');
+
+      document.getElementById('modeLabel').textContent = `MODE: ${modes[currentModeKey].label}`;
+    });
+
     document.getElementById('startBtn').onclick = startGame;
+
     gameLoop();
   </script>
 </body>
